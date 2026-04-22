@@ -1,29 +1,49 @@
 package main 
 
 import (
+	"encoding/json" 
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"os"           
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
+
+type config struct {
+	ListenPort string   `json:"listen_port"`
+	Backends   []string `json:"backends"`
+}
+
 var (
-	 allBackends = []string{":8081",":8082"}
-	 healthyBackends = []string{":8081",":8082"}
-   mu sync.RWMutex
-	 counter uint64 = 0
+	allBackends     []string
+	healthyBackends []string
+	mu              sync.RWMutex
+	counter         uint64 = 0
 )
 
 func main() {
-	listenAddr := ":8080"
+	cfg, err := loadConfig("config.json")
+	if err != nil {
+		log.Fatalf("Failed to load config.json: %v\n", err)
+	}
+
+	
+	allBackends = cfg.Backends
+	healthyBackends = cfg.Backends 
+	listenAddr := cfg.ListenPort
+
+	fmt.Printf("Loaded %d backends from config.json\n", len(allBackends))
+
+	
 	go startHealthCheckLoop()
 
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		log.Fatalf("Failed to bind to port %s : %v" , listenAddr, err)
+		log.Fatalf("Failed to bind to port %s : %v\n" , listenAddr, err)
 	}
 	defer listener.Close()
 
@@ -100,4 +120,18 @@ func handleConnection(clientConn net.Conn) {
 		io.Copy(clientConn, backendConn)
 	}()
 	wg.Wait()
+}
+
+
+func loadConfig(filename string) (*config, error) {
+	fileBytes , err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var cfg config 
+	err = json.Unmarshal(fileBytes, &cfg)
+	if err != nil {
+		return nil , err
+	}
+	return &cfg, nil
 }
